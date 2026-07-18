@@ -25,3 +25,11 @@ makepkg -si
 - AUR: https://aur.archlinux.org/packages/create-awesome-python-app
 - GitHub: https://github.com/Create-Python-App/create-python-app
 - PyPI: https://pypi.org/project/create-awesome-python-app/
+
+## 👥 Contributors
+
+<a href="https://github.com/Create-Python-App/aur-package/contributors">
+  <img src="https://contrib.rocks/image?repo=Create-Python-App/aur-package"/>
+</a>
+
+Made with [contributors-img](https://contrib.rocks).
