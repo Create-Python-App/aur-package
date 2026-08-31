@@ -1,0 +1,31 @@
+name: Validate PKGBUILD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  srcinfo:
+    name: .SRCINFO sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify .SRCINFO matches PKGBUILD
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/work:rw" \
+            -w /work \
+            archlinux:latest \
+            bash -euo pipefail -c '
+              pacman -Sy --noconfirm --needed pacman-contrib base-devel
+              useradd -m builder
+              chown -R builder:builder /work
+              runuser -u builder -- makepkg --printsrcinfo > /tmp/.SRCINFO.generated
+              diff -u .SRCINFO /tmp/.SRCINFO.generated
+            '
