@@ -10,6 +10,53 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: PKGBUILD lint (shellcheck + version check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install shellcheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          echo "shellcheck $(shellcheck --version | grep version)"
+
+      - name: ShellCheck PKGBUILD
+        run: |
+          set -euo pipefail
+          shellcheck --severity=warning --shell=bash \
+            --exclude=SC2034,SC2148,SC2154,SC2164 \
+            PKGBUILD || {
+              echo "::warning::shellcheck warnings in PKGBUILD"
+            }
+          test -f .SRCINFO || { echo "::error::.SRCINFO missing"; exit 1; }
+          bash -n PKGBUILD && echo "bash -n OK"
+
+      - name: Version drift check (PyPI)
+        run: |
+          set -euo pipefail
+          PKGVER=$(grep -E '^pkgver=' PKGBUILD | cut -d= -f2)
+          PYPI_VER=$(curl -sfL https://pypi.org/pypi/create-awesome-python-app/json | jq -r '.info.version')
+          echo "PKGBUILD pkgver: $PKGVER"
+          echo "PyPI latest: $PYPI_VER"
+          if [ "$PKGVER" != "$PYPI_VER" ]; then
+            echo "::warning::PKGBUILD pkgver ($PKGVER) differs from PyPI ($PYPI_VER)"
+          else
+            echo "Version sync OK: $PKGVER"
+          fi
+          # Verify sha256 matches PyPI sdist
+          PKGSHA=$(grep -E "^sha256sums=" PKGBUILD | grep -Eo "'[^']+'" | tr -d "'" | head -1)
+          PYPI_SHA=$(curl -sfL "https://pypi.org/pypi/create-awesome-python-app/${PKGVER}/json" | jq -r '.urls[] | select(.packagetype=="sdist") | .digests.sha256')
+          echo "PKGBUILD sha256: $PKGSHA"
+          echo "PyPI sdist sha256: $PYPI_SHA"
+          if [ "$PKGSHA" != "$PYPI_SHA" ]; then
+            echo "::warning::sha256 mismatch"
+          else
+            echo "SHA sync OK"
+          fi
+
   srcinfo:
     name: .SRCINFO sync
     runs-on: ubuntu-latest
@@ -23,9 +70,28 @@ jobs:
             -w /work \
             archlinux:latest \
             bash -euo pipefail -c '
-              pacman -Sy --noconfirm --needed pacman-contrib base-devel
+              pacman -Sy --noconfirm --needed pacman-contrib base-devel >/dev/null 2>&1
               useradd -m builder
               chown -R builder:builder /work
               runuser -u builder -- makepkg --printsrcinfo > /tmp/.SRCINFO.generated
               diff -u .SRCINFO /tmp/.SRCINFO.generated
+            '
+
+  namcap:
+    name: namcap PKGBUILD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run namcap (informational)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/work:rw" \
+            -w /work \
+            archlinux:latest \
+            bash -euo pipefail -c '
+              pacman -Sy --noconfirm --needed namcap pacman-contrib base-devel >/dev/null 2>&1
+              namcap PKGBUILD || true
+              namcap .SRCINFO || true
             '
